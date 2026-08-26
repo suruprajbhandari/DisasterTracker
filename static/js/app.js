@@ -1,7 +1,6 @@
 /**
- * Nepal Multi-Source Disaster Tracker — Map & UI Logic
- * Fetches combined data from Flask proxy (rivers, earthquakes, EONET)
- * and renders each source with distinct marker styles on a Leaflet map.
+ * Nepal Multi-Source Disaster Tracker — Satellite-First Flood Analytics
+ * Priorities: deep flood forecasting > earthquake monitoring > EONET macro
  */
 
 // ── Constants ─────────────────────────────────────
@@ -19,8 +18,8 @@ const NEPAL_BOUNDS = L.latLngBounds(
 
 // ── State ─────────────────────────────────────────
 let map;
-let riverLayer, quakeLayer, eonetLayer;
-let currentData = { rivers: [], earthquakes: [], eonet: [] };
+let riverLayer, quakeLayer, eonetLayer, reliefwebLayer;
+let currentData = { rivers: [], earthquakes: [], eonet: [], reliefweb: [] };
 
 // ── Init ──────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
@@ -30,7 +29,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setInterval(fetchAllData, REFRESH_MS);
 });
 
-// ── Map Setup ─────────────────────────────────────
+// ── Map Setup — Dual Layers ───────────────────────
 function initMap() {
   map = L.map("map", {
     center: NEPAL_CENTER,
@@ -42,42 +41,61 @@ function initMap() {
     zoomControl: false,
   });
 
-  // Base layers
-  const streetLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    maxZoom: 19,
-  });
-
-  const satelliteLayer = L.tileLayer(
-    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    {
-      attribution: '&copy; <a href="https://www.esri.com/">Esri</a> World Imagery',
-      maxZoom: 18,
-    }
-  );
-
-  // Default to street view
-  streetLayer.addTo(map);
-
-  // Layer control
+  const yesterday = new Date(Date.now() - 864e5).toISOString().split('T')[0];
+  
   const baseLayers = {
-    "🗺️ Street View": streetLayer,
-    "🛰️ Satellite View": satelliteLayer,
+      satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+          maxZoom: 18,
+          attribution: 'Tiles &copy; Esri'
+      }),
+      nasa: L.tileLayer(`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/${yesterday}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`, {
+          maxNativeZoom: 9,
+          maxZoom: 18,
+          attribution: 'NASA GIBS'
+      }),
+      street: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '&copy; OpenStreetMap contributors'
+      })
   };
+
+  // Default to satellite
+  baseLayers.satellite.addTo(map);
 
   // Data overlay groups
   riverLayer = L.layerGroup().addTo(map);
   quakeLayer = L.layerGroup().addTo(map);
   eonetLayer = L.layerGroup().addTo(map);
-
+  reliefwebLayer = L.layerGroup().addTo(map);
   const overlays = {
-    "🌊 River Stations": riverLayer,
-    "🔴 Earthquakes": quakeLayer,
-    "🟠 EONET Events": eonetLayer,
+    "💧 Flood Stations (GloFAS)": riverLayer,
+    "🚨 ReliefWeb Incidents": reliefwebLayer,
+    "🔴 Earthquakes (USGS)": quakeLayer,
+    "🟠 EONET Macro Events": eonetLayer,
   };
 
-  L.control.layers(baseLayers, overlays, { position: "topright", collapsed: true }).addTo(map);
   L.control.zoom({ position: "topright" }).addTo(map);
+
+  // Custom Layer Control Logic
+  function switchBaseLayer(selectedKey) {
+      Object.values(baseLayers).forEach(layer => {
+          if (map.hasLayer(layer)) {
+              map.removeLayer(layer);
+          }
+      });
+      baseLayers[selectedKey].addTo(map);
+      
+      document.querySelectorAll('.layer-btn').forEach(btn => btn.classList.remove('active'));
+      const activeBtn = document.getElementById(`btn-${selectedKey}`);
+      if (activeBtn) activeBtn.classList.add('active');
+  }
+
+  const btnSat = document.getElementById('btn-satellite');
+  const btnNasa = document.getElementById('btn-nasa');
+  const btnStreet = document.getElementById('btn-street');
+  if (btnSat) btnSat.addEventListener('click', () => switchBaseLayer('satellite'));
+  if (btnNasa) btnNasa.addEventListener('click', () => switchBaseLayer('nasa'));
+  if (btnStreet) btnStreet.addEventListener('click', () => switchBaseLayer('street'));
 }
 
 // ── Data Fetching ─────────────────────────────────
@@ -91,17 +109,30 @@ async function fetchAllData() {
     const data = await resp.json();
     currentData = data;
 
-    renderRiverMarkers(data.rivers || []);
-    renderQuakeMarkers(data.earthquakes || []);
-    renderEonetMarkers(data.eonet || []);
+    const rivers = data.rivers || [];
+    const reliefweb = data.reliefweb || [];
+    const earthquakes = data.earthquakes || [];
+    const eonet = data.eonet || [];
 
-    renderRiverList(data.rivers || []);
-    renderQuakeList(data.earthquakes || []);
-    renderEonetList(data.eonet || []);
+    // Check if ALL data feeds are completely empty/failed
+    if (rivers.length === 0 && reliefweb.length === 0 && earthquakes.length === 0 && eonet.length === 0) {
+      throw new Error("All data sources returned empty arrays.");
+    }
+
+    renderRiverMarkers(rivers);
+    renderReliefWebMarkers(reliefweb);
+    renderQuakeMarkers(earthquakes);
+    renderEonetMarkers(eonet);
+
+    renderRiverList(rivers);
+    renderReliefWebList(reliefweb);
+    renderQuakeList(earthquakes);
+    renderEonetList(eonet);
 
     updateCounts(data.counts || {});
+    updateTopAlert(rivers);
 
-    const total = (data.counts?.rivers || 0) + (data.counts?.earthquakes || 0) + (data.counts?.eonet || 0);
+    const total = rivers.length + earthquakes.length + eonet.length + reliefweb.length;
     setStatus("live", `${total} data points loaded`);
   } catch (err) {
     console.error("Fetch error:", err);
@@ -109,66 +140,192 @@ async function fetchAllData() {
   }
 }
 
-// ── River Markers (Blue Water Drops) ──────────────
+// ═══════════════════════════════════════════════════
+// RIVER MARKERS — Large, dominant, primary focus
+// ═══════════════════════════════════════════════════
 function renderRiverMarkers(rivers) {
   riverLayer.clearLayers();
 
   rivers.forEach((r) => {
-    const discharge = r.discharge_m3s !== null ? `${r.discharge_m3s} m³/s` : "No data";
-    const sparkline = buildSparkline(r.all_discharges || []);
+    const risk = evaluateRiverRisk(r);
+    const markerSize = 44; // Large, dominant
 
     const marker = L.marker([r.latitude, r.longitude], {
-      icon: createCircleIcon("#3b82f6", "💧", "rgba(59,130,246,0.5)"),
+      icon: L.divIcon({
+        className: "",
+        html: `<div class="river-marker ${risk.markerClass}" style="
+          width:${markerSize}px; height:${markerSize}px;
+          background:${risk.color}dd;
+          box-shadow: 0 0 15px ${risk.color};
+        ">💧</div>`,
+        iconSize: [markerSize, markerSize],
+        iconAnchor: [markerSize / 2, markerSize / 2],
+        popupAnchor: [0, -markerSize / 2 - 6],
+      }),
+      zIndexOffset: 500, // Rivers always on top
     });
 
-    marker.bindPopup(`
-      <div class="popup-content">
-        <div class="popup-source-badge source-river">💧 River Station</div>
-        <h3>${esc(r.name)}</h3>
-        <div class="popup-detail"><span class="detail-icon">📍</span><span>${esc(r.region)}</span></div>
-        <div class="popup-detail"><span class="detail-icon">🌊</span><span>Discharge: <strong>${discharge}</strong></span></div>
-        ${r.date ? `<div class="popup-detail"><span class="detail-icon">📅</span><span>${r.date}</span></div>` : ""}
-        ${sparkline}
-      </div>
-    `, { maxWidth: 320, className: "dark-popup" });
+    marker.bindPopup(() => buildRiverPopup(r, risk), {
+      maxWidth: 340, minWidth: 280, maxHeight: 400,
+      autoPan: true, autoPanPaddingTopLeft: [60, 60], autoPanPaddingBottomRight: [60, 60],
+      closeButton: true, className: "custom-disaster-popup"
+    });
 
     riverLayer.addLayer(marker);
   });
 }
 
-function buildSparkline(values) {
-  if (!values || values.length < 2) return "";
-  const filtered = values.filter((v) => v !== null);
-  if (filtered.length < 2) return "";
+function buildRiverPopup(r, risk) {
+  const today = r.discharge_m3s !== null ? r.discharge_m3s : "—";
+  const maxFc = r.max_forecast_m3s !== null ? r.max_forecast_m3s : "—";
+  const chart = buildForecastChart(r.forecast_discharges, r.forecast_max_discharges, r.forecast_dates);
 
-  const max = Math.max(...filtered);
-  const min = Math.min(...filtered);
-  const range = max - min || 1;
-  const w = 200, h = 40, pad = 4;
+  const transboundaryBadge = r.transboundary 
+    ? `<div class="event-tag cat-warning" style="background:rgba(251,146,60,0.2); color:#fb923c; border:1px solid rgba(251,146,60,0.4); margin-bottom:8px;">⚠️ Upstream Transboundary / Border Entry</div>` 
+    : '';
 
-  const points = filtered.map((v, i) => {
-    const x = pad + (i / (filtered.length - 1)) * (w - 2 * pad);
-    const y = h - pad - ((v - min) / range) * (h - 2 * pad);
-    return `${x},${y}`;
-  }).join(" ");
+  const steepGorgeBadge = (r.name.includes("Bhotekoshi") || r.name.includes("Trishuli"))
+    ? `<div class="event-tag risk-critical" style="margin-bottom:8px;">⚠️ Steep Himalayan Gorge: Vulnerable to sudden GLOF / transboundary surges from Tibet.</div>`
+    : '';
+
+  const gdacsEvent = (currentData.gdacs || []).find(g => 
+    Math.abs(g.latitude - r.latitude) < 0.5 && Math.abs(g.longitude - r.longitude) < 0.5
+  );
+  
+  const gdacsBadge = gdacsEvent
+    ? `<div class="event-tag risk-critical" style="margin-bottom:8px;">🚨 GDACS Hazard: ${esc(gdacsEvent.alert_level)} Alert</div>`
+    : '';
+
+  const rainStr = r.rainfall_24h_mm !== null ? `${r.rainfall_24h_mm} mm` : "—";
 
   return `
-    <div style="margin-top:8px;">
-      <div style="font-size:0.68rem; color:var(--clr-text-dim); margin-bottom:4px;">7-day discharge trend</div>
-      <svg width="${w}" height="${h}" style="background:rgba(59,130,246,0.06); border-radius:6px;">
-        <polyline points="${points}" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
+    <div class="popup-content popup-river-enhanced">
+      <div class="popup-source-badge source-river" style="background:${risk.color}33; color:${risk.color}; border:1px solid ${risk.color}55;">
+        ${risk.badge} · ${risk.label}
+      </div>
+      <h3>${esc(r.name)}</h3>
+      <div class="popup-detail"><span class="detail-icon">📍</span><span>${esc(r.region)}</span></div>
+      <div class="popup-detail"><span class="detail-icon">🌧️</span><span>24h Rainfall: <strong>${rainStr}</strong> (Open-Meteo)</span></div>
+      ${transboundaryBadge}
+      ${steepGorgeBadge}
+      ${gdacsBadge}
+
+      <div class="popup-divider"></div>
+
+      <!-- Forecast comparison -->
+      <div class="forecast-grid">
+        <div class="forecast-cell">
+          <div class="forecast-label">Today's Discharge</div>
+          <div class="forecast-value value-current">${today} <small>m³/s</small></div>
+        </div>
+        <div class="forecast-cell">
+          <div class="forecast-label">7-Day Max Forecast</div>
+          <div class="forecast-value value-max">${maxFc} <small>m³/s</small></div>
+        </div>
+      </div>
+
+      <!-- Risk level -->
+      <div class="risk-badge" style="background:${risk.color}22; color:${risk.color}; border:1px solid ${risk.color}55;">
+        Status: ${risk.label}
+      </div>
+
+      <!-- Forecast chart -->
+      ${chart}
+
+      <div class="popup-divider"></div>
+
+      <!-- Downstream risk -->
+      <div class="popup-context">
+        <div class="context-heading">⚠️ Downstream Risk Assessment</div>
+        <p>${esc(r.downstream_risk || "No downstream risk data available for this station.")}</p>
+      </div>
+
+      <!-- Flood source -->
+      <div class="popup-context">
+        <div class="context-heading">🔬 Flood Model Source</div>
+        <p>Water levels driven by GloFAS basin models, factoring in monsoon runoff, upstream snowmelt, and precipitation forecasts from ECMWF.</p>
+      </div>
+
+      <div class="popup-attribution">
+        Data: <strong>Open-Meteo GloFAS Forecast</strong> · Copernicus Emergency Management Service
+      </div>
     </div>
   `;
 }
 
-// ── Earthquake Markers (Red Pulses) ───────────────
+function buildForecastChart(discharges, maxDischarges, dates) {
+  if (!discharges || discharges.length < 2) return "";
+  const d = discharges.filter(v => v !== null);
+  const m = (maxDischarges || []).filter(v => v !== null);
+  if (d.length < 2) return "";
+
+  const all = [...d, ...m];
+  const maxVal = Math.max(...all);
+  const minVal = Math.min(...all);
+  const range = maxVal - minVal || 1;
+  const w = 300, h = 70, pad = 6;
+
+  const mapPoints = (arr) => arr.map((v, i) => {
+    const x = pad + (i / (arr.length - 1)) * (w - 2 * pad);
+    const y = h - pad - ((v - minVal) / range) * (h - 2 * pad);
+    return `${x},${y}`;
+  }).join(" ");
+
+  const dischargeLine = mapPoints(d);
+  const maxLine = m.length >= 2 ? mapPoints(m) : "";
+
+  // Date labels (first and last)
+  const firstDate = (dates && dates[0]) ? dates[0].slice(5) : "";
+  const lastDate = (dates && dates[dates.length - 1]) ? dates[dates.length - 1].slice(5) : "";
+
+  return `
+    <div class="forecast-chart">
+      <div class="chart-title">7-Day Discharge Forecast</div>
+      <svg viewBox="0 0 ${w} ${h}" class="chart-svg">
+        ${maxLine ? `<polyline points="${maxLine}" fill="none" stroke="#f43f5e" stroke-width="1.5" stroke-dasharray="4,3" stroke-linecap="round" opacity="0.7"/>` : ""}
+        <polyline points="${dischargeLine}" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="chart-legend">
+        <span><span class="legend-line legend-current"></span>Discharge</span>
+        ${maxLine ? '<span><span class="legend-line legend-max"></span>Max Statistical</span>' : ""}
+      </div>
+      <div class="chart-dates"><span>${firstDate}</span><span>${lastDate}</span></div>
+    </div>
+  `;
+}
+
+function getFloodRisk(r) {
+  const today = r.discharge_m3s || 0;
+  const maxFc = r.max_forecast_m3s || today;
+  const median = r.median_discharge_m3s || today || 1; // avoid /0
+  
+  // ReliefWeb proximity check (rough bounding box check)
+  let nearbyAlert = false;
+  (currentData.reliefweb || []).forEach(inc => {
+    if (inc.latitude && inc.longitude) {
+      const dLat = Math.abs(inc.latitude - r.latitude);
+      const dLon = Math.abs(inc.longitude - r.longitude);
+      if (dLat < 0.5 && dLon < 0.5) nearbyAlert = true;
+    }
+  });
+
+  const isLevel1 = (today >= 1.3 * median) || (maxFc > 1.5 * today) || nearbyAlert;
+  const isLevel2 = (today >= 1.1 * median) || (maxFc > today);
+
+  if (isLevel1) return { label: "CRITICAL FLOOD DANGER", icon: "🔴", css: "risk-critical", markerClass: "risk-critical-marker", level: 1 };
+  if (isLevel2) return { label: "ELEVATED RISK", icon: "🟠", css: "risk-high", markerClass: "risk-high-marker", level: 2 };
+  return { label: "NORMAL", icon: "🟢", css: "risk-normal", markerClass: "risk-normal-marker", level: 3 };
+}
+
+// ═══════════════════════════════════════════════════
+// EARTHQUAKE MARKERS — Small, secondary
+// ═══════════════════════════════════════════════════
 function renderQuakeMarkers(quakes) {
   quakeLayer.clearLayers();
 
   quakes.forEach((q) => {
     const mag = q.magnitude || 0;
-    const size = Math.max(20, Math.min(48, mag * 10));
+    const size = Math.max(14, Math.min(28, mag * 5)); // Shrunk down
     const time = q.time ? formatDate(new Date(q.time).toISOString()) : "Unknown";
 
     const marker = L.marker([q.latitude, q.longitude], {
@@ -176,32 +333,39 @@ function renderQuakeMarkers(quakes) {
         className: "",
         html: `<div class="quake-marker" style="
           width:${size}px; height:${size}px;
-          --pulse-size: ${size * 2.5}px;
-        "><span style="font-size:${Math.max(10, size * 0.38)}px;">${mag.toFixed(1)}</span></div>`,
+        "><span style="font-size:${Math.max(8, size * 0.38)}px;">${mag.toFixed(1)}</span></div>`,
         iconSize: [size, size],
         iconAnchor: [size / 2, size / 2],
         popupAnchor: [0, -size / 2 - 4],
       }),
+      zIndexOffset: 100, // Below rivers
     });
 
     marker.bindPopup(`
       <div class="popup-content">
-        <div class="popup-source-badge source-quake">🔴 Earthquake</div>
+        <div class="popup-source-badge source-quake">🔴 USGS Earthquake</div>
         <h3>${esc(q.title)}</h3>
         <div class="popup-detail"><span class="detail-icon">📊</span><span>Magnitude: <strong>${mag.toFixed(1)}</strong></span></div>
         <div class="popup-detail"><span class="detail-icon">📍</span><span>${esc(q.place)}</span></div>
         <div class="popup-detail"><span class="detail-icon">⬇️</span><span>Depth: ${q.depth_km ?? "?"}km</span></div>
         <div class="popup-detail"><span class="detail-icon">🕐</span><span>${time}</span></div>
         <div class="popup-divider"></div>
-        ${q.url ? `<a class="popup-link" href="${q.url}" target="_blank" rel="noopener noreferrer">📄 USGS Details ↗</a>` : ""}
+        ${q.url ? `<a class="popup-link" href="${q.url}" target="_blank" rel="noopener noreferrer">📄 USGS Report ↗</a>` : ""}
+        <div class="popup-attribution">Data: <strong>USGS</strong> · United States Geological Survey</div>
       </div>
-    `, { maxWidth: 320, className: "dark-popup" });
+    `, { 
+      maxWidth: 340, minWidth: 280, maxHeight: 400,
+      autoPan: true, autoPanPaddingTopLeft: [60, 60], autoPanPaddingBottomRight: [60, 60],
+      closeButton: true, className: "custom-disaster-popup"
+    });
 
     quakeLayer.addLayer(marker);
   });
 }
 
-// ── EONET Markers (Orange Warnings) ───────────────
+// ═══════════════════════════════════════════════════
+// EONET MARKERS — Orange, secondary
+// ═══════════════════════════════════════════════════
 function renderEonetMarkers(events) {
   eonetLayer.clearLayers();
 
@@ -210,13 +374,22 @@ function renderEonetMarkers(events) {
     event.geometries.forEach((geom) => {
       if (geom.type !== "Point") return;
 
+      const size = 26;
       const marker = L.marker([geom.latitude, geom.longitude], {
-        icon: createCircleIcon(
-          isOpen ? "#f97316" : "#78716c",
-          "⚠️",
-          isOpen ? "rgba(249,115,22,0.5)" : "rgba(120,113,108,0.3)"
-        ),
+        icon: L.divIcon({
+          className: "",
+          html: `<div class="disaster-marker" style="
+            width:${size}px; height:${size}px;
+            background:${isOpen ? '#f97316' : '#78716c'};
+            --glow-color:${isOpen ? 'rgba(249,115,22,0.5)' : 'rgba(120,113,108,0.3)'};
+            font-size:12px;
+          ">⚠️</div>`,
+          iconSize: [size, size],
+          iconAnchor: [size / 2, size / 2],
+          popupAnchor: [0, -size / 2 - 4],
+        }),
         opacity: isOpen ? 1 : 0.65,
+        zIndexOffset: 200,
       });
 
       const cats = event.categories.join(", ") || "Unknown";
@@ -232,7 +405,7 @@ function renderEonetMarkers(events) {
       marker.bindPopup(`
         <div class="popup-content">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-            <div class="popup-source-badge source-eonet">🟠 EONET</div>
+            <div class="popup-source-badge source-eonet">🟠 NASA EONET</div>
             ${statusBadge}
           </div>
           <h3>${esc(event.title)}</h3>
@@ -242,31 +415,68 @@ function renderEonetMarkers(events) {
           <div class="popup-divider"></div>
           ${sourcesHTML}
           ${event.link ? `<a class="popup-link" href="${event.link}" target="_blank" rel="noopener noreferrer">🌐 EONET Details ↗</a>` : ""}
+          <div class="popup-attribution">Data: <strong>NASA EONET v3</strong></div>
         </div>
-      `, { maxWidth: 320, className: "dark-popup" });
+      `, { 
+        maxWidth: 340, minWidth: 280, maxHeight: 400,
+        autoPan: true, autoPanPaddingTopLeft: [60, 60], autoPanPaddingBottomRight: [60, 60],
+        closeButton: true, className: "custom-disaster-popup"
+      });
 
       eonetLayer.addLayer(marker);
     });
   });
 }
 
-// ── Shared Marker Factory ─────────────────────────
-function createCircleIcon(color, emoji, glow) {
-  const size = 32;
-  return L.divIcon({
-    className: "",
-    html: `<div class="disaster-marker" style="
-      width:${size}px; height:${size}px;
-      background:${color}; --glow-color:${glow};
-      font-size:14px;
-    ">${emoji}</div>`,
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2],
-    popupAnchor: [0, -size / 2 - 4],
+// ═══════════════════════════════════════════════════
+// RELIEFWEB MARKERS — Prominent Alerts
+// ═══════════════════════════════════════════════════
+function renderReliefWebMarkers(incidents) {
+  reliefwebLayer.clearLayers();
+
+  incidents.forEach((inc) => {
+    if (!inc.latitude || !inc.longitude) return;
+
+    const size = 32;
+    const marker = L.marker([inc.latitude, inc.longitude], {
+      icon: L.divIcon({
+        className: "",
+        html: `<div class="reliefweb-marker" style="width:${size}px; height:${size}px;">🚨</div>`,
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
+        popupAnchor: [0, -size / 2 - 4],
+      }),
+      zIndexOffset: 300,
+    });
+
+    const date = inc.date ? formatDate(inc.date) : "—";
+    
+    marker.bindPopup(`
+      <div class="popup-content">
+        <div class="popup-source-badge source-reliefweb">🚨 UN OCHA ReliefWeb</div>
+        <h3>${esc(inc.title)}</h3>
+        <div class="popup-detail"><span class="detail-icon">🏷️</span><span>Type: <strong>${esc(inc.type)}</strong></span></div>
+        <div class="popup-detail"><span class="detail-icon">📊</span><span>Status: ${esc(inc.status)}</span></div>
+        <div class="popup-detail"><span class="detail-icon">📅</span><span>${date}</span></div>
+        <div class="popup-divider"></div>
+        <p style="font-size:0.75rem; color:var(--clr-text-dim); margin-bottom:10px;">${esc(inc.description).substring(0, 150)}...</p>
+        ${inc.url ? `<a class="popup-link" href="${inc.url}" target="_blank" rel="noopener noreferrer">🌐 ReliefWeb Report ↗</a>` : ""}
+        <div class="popup-attribution">Data: <strong>ReliefWeb API</strong></div>
+      </div>
+    `, { 
+      maxWidth: 340, minWidth: 280, maxHeight: 400,
+      autoPan: true, autoPanPaddingTopLeft: [60, 60], autoPanPaddingBottomRight: [60, 60],
+      closeButton: true, className: "custom-disaster-popup"
+    });
+
+    reliefwebLayer.addLayer(marker);
   });
 }
 
-// ── Sidebar: River List ───────────────────────────
+// ═══════════════════════════════════════════════════
+// SIDEBAR LISTS
+// ═══════════════════════════════════════════════════
+
 function renderRiverList(rivers) {
   const el = document.getElementById("content-rivers");
   if (rivers.length === 0) {
@@ -275,14 +485,24 @@ function renderRiverList(rivers) {
   }
 
   el.innerHTML = rivers.map((r) => {
-    const val = r.discharge_m3s !== null ? `${r.discharge_m3s} m³/s` : "No data";
-    const level = getFloodLevel(r.discharge_m3s);
+    const today = r.discharge_m3s !== null ? `${r.discharge_m3s}` : "—";
+    const maxFc = r.max_forecast_m3s !== null ? `${r.max_forecast_m3s}` : "—";
+    const risk = evaluateRiverRisk(r);
     return `
       <div class="event-card" onclick="flyTo(${r.latitude}, ${r.longitude})">
         <div class="event-card-title">💧 ${esc(r.name)}</div>
+        <div class="river-card-stats">
+          <div class="river-stat">
+            <span class="river-stat-label">Now</span>
+            <span class="river-stat-value">${today} <small>m³/s</small></span>
+          </div>
+          <div class="river-stat">
+            <span class="river-stat-label">7d Max</span>
+            <span class="river-stat-value value-max-sm">${maxFc} <small>m³/s</small></span>
+          </div>
+        </div>
         <div class="event-card-meta">
-          <span class="event-tag cat-flood">${val}</span>
-          <span class="event-tag ${level.css}">${level.label}</span>
+          <span class="event-tag" style="background:${risk.color}33; color:${risk.color}; border:1px solid ${risk.color}55;">${risk.badge}</span>
           ${r.date ? `<span class="event-date">${r.date}</span>` : ""}
         </div>
       </div>
@@ -290,14 +510,6 @@ function renderRiverList(rivers) {
   }).join("");
 }
 
-function getFloodLevel(discharge) {
-  if (discharge === null || discharge === undefined) return { label: "No data", css: "cat-default" };
-  if (discharge > 5000) return { label: "⚠️ High", css: "cat-wildfire" };
-  if (discharge > 1000) return { label: "Moderate", css: "cat-landslide" };
-  return { label: "Normal", css: "cat-flood" };
-}
-
-// ── Sidebar: Earthquake List ──────────────────────
 function renderQuakeList(quakes) {
   const el = document.getElementById("content-earthquakes");
   if (quakes.length === 0) {
@@ -322,7 +534,6 @@ function renderQuakeList(quakes) {
   }).join("");
 }
 
-// ── Sidebar: EONET List ───────────────────────────
 function renderEonetList(events) {
   const el = document.getElementById("content-eonet");
   if (events.length === 0) {
@@ -350,14 +561,41 @@ function renderEonetList(events) {
   }).join("");
 }
 
-// ── Sidebar Counts ────────────────────────────────
+function renderReliefWebList(incidents) {
+  const el = document.getElementById("content-reliefweb");
+  if (incidents.length === 0) {
+    el.innerHTML = emptyMsg("No active ReliefWeb disasters reported for this region.");
+    return;
+  }
+
+  el.innerHTML = incidents.map((inc) => {
+    const lat = inc.latitude || NEPAL_CENTER[0];
+    const lng = inc.longitude || NEPAL_CENTER[1];
+    const date = inc.date ? formatDate(inc.date) : "";
+    return `
+      <div class="event-card" onclick="flyTo(${lat}, ${lng})">
+        <div class="event-card-title">🚨 ${esc(inc.title)}</div>
+        <div class="event-card-meta">
+          <span class="event-tag cat-reliefweb">${esc(inc.type)}</span>
+          <span class="event-tag cat-default">${esc(inc.status)}</span>
+          <span class="event-date">${date}</span>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+// ═══════════════════════════════════════════════════
+// SHARED UTILITIES
+// ═══════════════════════════════════════════════════
+
 function updateCounts(counts) {
   document.getElementById("count-rivers").textContent = counts.rivers ?? 0;
   document.getElementById("count-earthquakes").textContent = counts.earthquakes ?? 0;
   document.getElementById("count-eonet").textContent = counts.eonet ?? 0;
+  document.getElementById("count-reliefweb").textContent = counts.reliefweb ?? 0;
 }
 
-// ── Empty State ───────────────────────────────────
 function emptyMsg(text) {
   return `
     <div class="state-message state-message-sm">
@@ -367,21 +605,17 @@ function emptyMsg(text) {
   `;
 }
 
-// ── Map Navigation ────────────────────────────────
 function flyTo(lat, lng) {
   map.flyTo([lat, lng], 10, { duration: 1 });
 }
 
-// ── Controls ──────────────────────────────────────
 function setupControls() {
-  // Refresh button
   const btn = document.getElementById("btn-refresh");
   btn.addEventListener("click", () => {
     btn.classList.add("spinning");
     fetchAllData().finally(() => setTimeout(() => btn.classList.remove("spinning"), 600));
   });
 
-  // Panel toggle
   const panel = document.getElementById("side-panel");
   const toggle = document.getElementById("panel-toggle");
   const closeBtn = document.getElementById("panel-close");
@@ -396,7 +630,11 @@ function setupControls() {
     toggle.classList.add("visible");
   });
 
-  // Section toggles (collapsible accordion)
+  const btnLocate = document.getElementById("btn-locate");
+  if (btnLocate) {
+    btnLocate.addEventListener("click", locateUser);
+  }
+
   document.querySelectorAll(".section-toggle").forEach((btn) => {
     btn.addEventListener("click", () => {
       const section = btn.dataset.section;
@@ -409,14 +647,12 @@ function setupControls() {
   });
 }
 
-// ── Status ────────────────────────────────────────
 function setStatus(type, text) {
   const badge = document.getElementById("status-badge");
   badge.className = `status-badge ${type}`;
   badge.innerHTML = `<span class="status-dot"></span> ${text}`;
 }
 
-// ── Utilities ─────────────────────────────────────
 function formatDate(iso) {
   if (!iso) return "";
   const d = new Date(iso);
@@ -431,3 +667,143 @@ function esc(str) {
   d.textContent = str;
   return d.innerHTML;
 }
+
+function updateTopAlert(rivers) {
+  const banner = document.getElementById("top-alert-banner");
+  if (!banner) return;
+
+  const criticalRiver = rivers.find(r => {
+    const risk = evaluateRiverRisk(r);
+    return risk.level === 1;
+  });
+
+  if (criticalRiver) {
+    banner.style.display = "flex";
+    banner.innerHTML = `
+      <div class="alert-content">
+        ⚠️ CRITICAL FLOOD THREAT DETECTED IN ${criticalRiver.name.toUpperCase()} BASIN
+      </div>
+      <button class="alert-btn" onclick="flyTo(${criticalRiver.latitude}, ${criticalRiver.longitude})">Center Map</button>
+    `;
+  } else {
+    banner.style.display = "none";
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// NEW LOGIC: Risk & GPS Tracking
+// ═══════════════════════════════════════════════════
+
+function evaluateRiverRisk(r) {
+  const today = r.discharge_m3s || 0;
+  const maxFc = r.max_forecast_m3s || 0;
+  const median = r.median_discharge_m3s || 1; // avoid div/0
+  const rain24h = r.rainfall_24h_mm || 0;
+
+  if (today >= 1.4 * median || maxFc >= 1.8 * median || rain24h > 50) {
+    return { level: 1, label: "CRITICAL FLOOD RISK", color: "#EF4444", badge: "SEVERE SPIKE", markerClass: "marker-critical" };
+  } else if (today >= 1.1 * median || maxFc >= 1.3 * median) {
+    return { level: 2, label: "ELEVATED RISK", color: "#F59E0B", badge: "WATCH", markerClass: "marker-warning" };
+  } else {
+    return { level: 3, label: "NORMAL FLOW", color: "#3B82F6", badge: "NORMAL", markerClass: "marker-normal" };
+  }
+}
+
+let userMarker = null;
+
+function locateUser() {
+  if (!navigator.geolocation) {
+    alert("Geolocation is not supported by your browser.");
+    return;
+  }
+  
+  setStatus("loading", "Locating you...");
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const lat = pos.coords.latitude;
+      const lng = pos.longitude || pos.coords.longitude;
+      
+      // Plot user
+      if (userMarker) {
+        userMarker.setLatLng([lat, lng]);
+      } else {
+        userMarker = L.marker([lat, lng], {
+          icon: L.divIcon({
+            className: "",
+            html: '<div class="gps-marker"><div class="gps-pulse"></div></div>',
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
+          }),
+          zIndexOffset: 1000
+        }).addTo(map);
+      }
+      
+      // Calculate closest hazard
+      let closestWarning = "No nearby critical hazards detected.";
+      let minDist = Infinity;
+      
+      (currentData.rivers || []).forEach(r => {
+        const risk = evaluateRiverRisk(r);
+        if (risk.level === 1) {
+          const dist = getDistanceFromLatLonInKm(lat, lng, r.latitude, r.longitude);
+          if (dist < minDist) {
+            minDist = dist;
+            closestWarning = `Closest Alert: ${r.name} - ${Math.round(dist)} km away`;
+          }
+        }
+      });
+      
+      userMarker.bindPopup(`
+        <div class="popup-content" style="padding: 10px; text-align: center;">
+          <h3 style="margin-bottom: 5px;">📍 Your Current Location</h3>
+          <p style="font-size: 0.85rem; color: var(--clr-text-dim);">${closestWarning}</p>
+        </div>
+      `).openPopup();
+      
+      map.flyTo([lat, lng], 10);
+      setStatus("live", "Location found");
+    },
+    (err) => {
+      setStatus("error", "Location access denied or failed.");
+    },
+    { enableHighAccuracy: true }
+  );
+}
+
+function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Radius of the earth in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;  
+  const dLon = (lon2 - lon1) * Math.PI / 180; 
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2); 
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+  return R * c; 
+}
+
+
+// ═══════════════════════════════════════════════════
+// EMERGENCY MODAL TOGGLE
+// ═══════════════════════════════════════════════════
+document.addEventListener("DOMContentLoaded", () => {
+  const fab = document.getElementById("fab-emergency");
+  const modal = document.getElementById("emergency-modal");
+  const closeBtn = document.getElementById("emergency-close");
+
+  if (fab && modal && closeBtn) {
+    fab.addEventListener("click", () => {
+      modal.classList.add("active");
+    });
+
+    closeBtn.addEventListener("click", () => {
+      modal.classList.remove("active");
+    });
+
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) {
+        modal.classList.remove("active");
+      }
+    });
+  }
+});
