@@ -6,14 +6,20 @@
   <title>Nepal Disaster Tracker — Multi-Source Live Dashboard</title>
   <meta name="description" content="Real-time multi-source disaster tracking for Nepal — river floods, earthquakes, and NASA EONET events on an interactive map." />
 
+  <!-- Google Fonts: Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
 
   <!-- App CSS -->
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=1.2" />
 </head>
 <body>
+  <div id="top-alert-banner" class="top-alert-banner" style="display: none;"></div>
 
   <!-- ─── Header Bar ──────────────────────────────── -->
   <header class="header-bar">
@@ -28,6 +34,9 @@
       <div id="status-badge" class="status-badge loading">
         <span class="status-dot"></span> Initializing…
       </div>
+      <button id="btn-locate" class="btn-locate" title="Find my location">
+        📍 My Location
+      </button>
       <button id="btn-refresh" class="btn-refresh" title="Refresh all data">
         <span class="refresh-icon">⟳</span> Refresh
       </button>
@@ -41,9 +50,22 @@
         <h2>Live Data Sources</h2>
         <button id="panel-close" class="panel-close-btn" title="Close panel">✕</button>
       </div>
-      <p>Aggregated from 3 independent APIs</p>
+      <p>Aggregated from 4 independent APIs</p>
     </div>
     <div class="panel-body" id="panel-body">
+      <!-- Section: ReliefWeb -->
+      <div class="panel-section" id="section-reliefweb">
+        <button class="section-toggle" data-section="reliefweb" aria-expanded="true">
+          <span class="section-icon">🚨</span>
+          <span class="section-title">Active ReliefWeb Incidents</span>
+          <span class="section-count" id="count-reliefweb">—</span>
+          <span class="section-chevron">▾</span>
+        </button>
+        <div class="section-content" id="content-reliefweb">
+          <div class="state-message"><div class="state-icon">⏳</div><p>Loading ReliefWeb data…</p></div>
+        </div>
+      </div>
+
       <!-- Section: Rivers -->
       <div class="panel-section" id="section-rivers">
         <button class="section-toggle" data-section="rivers" aria-expanded="true">
@@ -60,26 +82,13 @@
       <!-- Section: Earthquakes -->
       <div class="panel-section" id="section-earthquakes">
         <button class="section-toggle" data-section="earthquakes" aria-expanded="true">
-          <span class="section-icon">🔴</span>
-          <span class="section-title">Recent Earthquakes</span>
+          <span class="section-icon">🌋</span>
+          <span class="section-title">Seismic Activity (USGS)</span>
           <span class="section-count" id="count-earthquakes">—</span>
           <span class="section-chevron">▾</span>
         </button>
         <div class="section-content" id="content-earthquakes">
           <div class="state-message"><div class="state-icon">⏳</div><p>Loading earthquake data…</p></div>
-        </div>
-      </div>
-
-      <!-- Section: EONET -->
-      <div class="panel-section" id="section-eonet">
-        <button class="section-toggle" data-section="eonet" aria-expanded="true">
-          <span class="section-icon">🟠</span>
-          <span class="section-title">EONET Macro Events</span>
-          <span class="section-count" id="count-eonet">—</span>
-          <span class="section-chevron">▾</span>
-        </button>
-        <div class="section-content" id="content-eonet">
-          <div class="state-message"><div class="state-icon">⏳</div><p>Loading EONET data…</p></div>
         </div>
       </div>
     </div>
@@ -91,11 +100,83 @@
   <!-- ─── Map ─────────────────────────────────────── -->
   <div id="map"></div>
 
+  <!-- ─── Map Views Custom UI ─────────────────────── -->
+  <div class="map-views-panel">
+    <button id="btn-satellite" class="layer-btn active">🛰️ Satellite (High-Res)</button>
+    <button id="btn-nasa" class="layer-btn">🛰️ NASA (Today)</button>
+    <button id="btn-street" class="layer-btn">🗺️ Street Map</button>
+  </div>
+
+  <!-- ─── Emergency Helplines FAB & Modal ─────────── -->
+  <button id="fab-emergency" class="sos-fab" title="Emergency Contacts">
+    SOS
+  </button>
+
+  <div id="emergency-modal" class="sos-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>🆘 Emergency Contacts</h2>
+        <button id="emergency-close" class="modal-close-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        
+        <div class="contact-section">
+          <h3>National Rescue Hotlines</h3>
+          <ul>
+            <li><span>Nepal Police Emergency</span> <a href="tel:100">100</a></li>
+            <li><span>Armed Police Force (APF)</span> <a href="tel:1114">1114</a></li>
+            <li><span>National Disaster Relief (Bipad)</span> <a href="tel:1234">1234</a></li>
+            <li><span>MoHA Call Center</span> <a href="tel:1112">1112</a> / <a href="tel:9851360603">9851360603</a></li>
+            <li><span>NDRRMA Disaster Response</span> <a href="tel:9841281097">9841281097</a></li>
+            <li><span>Ambulance</span> <a href="tel:102">102</a></li>
+            <li><span>Nepal Army Rescue Desk</span> <a href="tel:+97715979571">+977-1-5979571</a></li>
+            <li><span>Tourist Police</span> <a href="tel:1144">1144</a> / <a href="tel:9851289445">9851289445</a></li>
+            <li><span>National Emergency Ops (NEOC)</span> <a href="tel:+97714200105">+977-1-4200105</a></li>
+          </ul>
+        </div>
+
+        <div class="contact-section">
+          <h3>Missing Police Personnel (Bhotekoshi/Rasuwa)</h3>
+          <ul>
+            <li><span>SSP Santosh Kumar Bhattarai</span> <a href="tel:9851281321">9851281321</a></li>
+            <li><span>DSP Ishwori Prasad Bhandari</span> <a href="tel:9851119460">9851119460</a></li>
+            <li><span>Inspector Chuda Kumari Khadka</span> <a href="tel:9851223751">9851223751</a></li>
+            <li><span>Inspector Prakash Thapa</span> <a href="tel:9866519065">9866519065</a></li>
+            <li><span>Inspector Rajesh Basnet</span> <a href="tel:9851282977">9851282977</a></li>
+            <li><span>ASI Gyanendra Koirala</span> <a href="tel:9842637708">9842637708</a></li>
+          </ul>
+        </div>
+
+        <div class="contact-section">
+          <h3>Indian Embassy (Stranded Nationals)</h3>
+          <ul>
+            <li><span>Embassy Helpline 1</span> <a href="tel:+9779851316807">+977 985 131 6807</a></li>
+            <li><span>Embassy Helpline 2</span> <a href="tel:+9779709107500">+977 970 910 7500</a></li>
+            <li><span>Embassy Helpline 3</span> <a href="tel:+9779810326117">+977 981 032 6117</a></li>
+          </ul>
+        </div>
+
+        <div class="contact-section">
+          <h3>District Administration (CDO, Police, APF)</h3>
+          <ul>
+            <li><span>Rasuwa</span> <a href="tel:9851277777">9851277777</a> | <a href="tel:9851164422">9851164422</a></li>
+            <li><span>Nuwakot</span> <a href="tel:9851147777">9851147777</a> | <a href="tel:9851248777">9851248777</a></li>
+            <li><span>Dhading</span> <a href="tel:9851247777">9851247777</a> | <a href="tel:9851119631">9851119631</a></li>
+            <li><span>Chitwan</span> <a href="tel:9855017777">9855017777</a> | <a href="tel:9855088891">9855088891</a></li>
+            <li><span>Gorkha</span> <a href="tel:9856057777">9856057777</a> | <a href="tel:9856057778">9856057778</a></li>
+            <li><span>Tanahun</span> <a href="tel:9856067777">9856067777</a> | <a href="tel:9856001111">9856001111</a></li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
   <!-- App JS -->
-  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}?v=1.2"></script>
 </body>
 </html>
