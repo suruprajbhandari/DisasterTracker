@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nepal Disaster Tracker — Multi-Source Live Dashboard</title>
+  <meta name="description" content="Real-time multi-source disaster tracking for Nepal — river floods, earthquakes, and NASA EONET events on an interactive map." />
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+
+  <!-- App CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+<body>
+
+  <!-- ─── Header Bar ──────────────────────────────── -->
+  <header class="header-bar">
+    <div class="header-brand">
+      <div class="brand-icon">🛰️</div>
+      <div>
+        <h1>Nepal <span>Disaster Tracker</span></h1>
+        <div class="header-subtitle">Multi-Source Live Dashboard</div>
+      </div>
+    </div>
+    <div class="header-status">
+      <div id="status-badge" class="status-badge loading">
+        <span class="status-dot"></span> Initializing…
+      </div>
+      <button id="btn-refresh" class="btn-refresh" title="Refresh all data">
+        <span class="refresh-icon">⟳</span> Refresh
+      </button>
+    </div>
+  </header>
+
+  <!-- ─── Side Panel ──────────────────────────────── -->
+  <aside class="side-panel" id="side-panel">
+    <div class="panel-header">
+      <div class="panel-header-row">
+        <h2>Live Data Sources</h2>
+        <button id="panel-close" class="panel-close-btn" title="Close panel">✕</button>
+      </div>
+      <p>Aggregated from 3 independent APIs</p>
+    </div>
+    <div class="panel-body" id="panel-body">
+      <!-- Section: Rivers -->
+      <div class="panel-section" id="section-rivers">
+        <button class="section-toggle" data-section="rivers" aria-expanded="true">
+          <span class="section-icon">🌊</span>
+          <span class="section-title">River Levels</span>
+          <span class="section-count" id="count-rivers">—</span>
+          <span class="section-chevron">▾</span>
+        </button>
+        <div class="section-content" id="content-rivers">
+          <div class="state-message"><div class="state-icon">⏳</div><p>Loading river data…</p></div>
+        </div>
+      </div>
+
+      <!-- Section: Earthquakes -->
+      <div class="panel-section" id="section-earthquakes">
+        <button class="section-toggle" data-section="earthquakes" aria-expanded="true">
+          <span class="section-icon">🔴</span>
+          <span class="section-title">Recent Earthquakes</span>
+          <span class="section-count" id="count-earthquakes">—</span>
+          <span class="section-chevron">▾</span>
+        </button>
+        <div class="section-content" id="content-earthquakes">
+          <div class="state-message"><div class="state-icon">⏳</div><p>Loading earthquake data…</p></div>
+        </div>
+      </div>
+
+      <!-- Section: EONET -->
+      <div class="panel-section" id="section-eonet">
+        <button class="section-toggle" data-section="eonet" aria-expanded="true">
+          <span class="section-icon">🟠</span>
+          <span class="section-title">EONET Macro Events</span>
+          <span class="section-count" id="count-eonet">—</span>
+          <span class="section-chevron">▾</span>
+        </button>
+        <div class="section-content" id="content-eonet">
+          <div class="state-message"><div class="state-icon">⏳</div><p>Loading EONET data…</p></div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Toggle button for collapsed panel -->
+  <button id="panel-toggle" class="panel-toggle" title="Show event list">☰</button>
+
+  <!-- ─── Map ─────────────────────────────────────── -->
+  <div id="map"></div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <!-- App JS -->
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
