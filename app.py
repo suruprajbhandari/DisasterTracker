@@ -22,14 +22,14 @@ REQUEST_TIMEOUT = 4
 # Major rivers with representative gauge coordinates and downstream context
 NEPAL_RIVERS = [
     {
-        "name": "Bhotekoshi River", "lat": 28.23, "lon": 85.38,
+        "name": "Bhotekoshi River", "lat": 28.2537, "lon": 85.3665,
         "region": "Timure / Rasuwa Border",
         "downstream_risk": "High risk of flash flooding and GLOF downstream.",
         "tag": "High-Elevation GLOF Corridor",
         "transboundary": True,
     },
     {
-        "name": "Trishuli River", "lat": 28.16, "lon": 85.34,
+        "name": "Trishuli River", "lat": 28.17, "lon": 85.30,
         "region": "Syabrubesi",
         "downstream_risk": "Impacts downstream hydropower projects and settlements.",
         "tag": "Downstream Flash Flood Zone",
@@ -86,7 +86,7 @@ USGS_URL_TEMPLATE = (
 FLOOD_URL_TEMPLATE = (
     "https://flood-api.open-meteo.com/v1/flood"
     "?latitude={lat}&longitude={lon}"
-    "&daily=river_discharge,river_discharge_median,river_discharge_max,precipitation_sum"
+    "&daily=river_discharge,river_discharge_median,river_discharge_max"
     "&forecast_days=7"
 )
 
@@ -185,21 +185,21 @@ def fetch_rivers():
                     discharges = daily.get("river_discharge", [])
                     median_discharges = daily.get("river_discharge_median", [])
                     max_discharges = daily.get("river_discharge_max", [])
-                    precipitations = daily.get("precipitation_sum", [])
                     dates = daily.get("time", [])
 
-                    # Today's discharge, median, and precipitation
+                    # Today's discharge and median
                     today_discharge = None
                     today_median = None
                     today_date = None
-                    rainfall_24h = None
-                    for d, m, p, t in zip(discharges, median_discharges if median_discharges else [None]*len(discharges), precipitations if precipitations else [None]*len(discharges), dates):
+                    for d, m, t in zip(
+                        discharges,
+                        median_discharges if median_discharges else [None]*len(discharges),
+                        dates,
+                    ):
                         if d is not None:
                             today_discharge = round(d, 2)
                             if m is not None:
                                 today_median = round(m, 2)
-                            if p is not None:
-                                rainfall_24h = round(p, 2)
                             today_date = t
                             break
 
@@ -221,7 +221,6 @@ def fetch_rivers():
                         "transboundary": river.get("transboundary", False),
                         "discharge_m3s": today_discharge,
                         "median_discharge_m3s": today_median,
-                        "rainfall_24h_mm": rainfall_24h,
                         "date": today_date,
                         "max_forecast_m3s": max_forecast,
                         "max_forecast_date": max_forecast_date,
