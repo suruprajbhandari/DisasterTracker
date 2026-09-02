@@ -5,6 +5,91 @@ Fetches data from three APIs concurrently:
   B) USGS Earthquake API (recent seismic events)
   C) NASA EONET v3 (macro disaster events)
 """
+"""
+Nepal Multi-Source Disaster Tracker — Flask Backend
+Fetches data from three APIs concurrently:
+  A) Open-Meteo Flood API (river discharge levels)
+  B) USGS Earthquake API (recent seismic events)
+  C) NASA EONET v3 (macro disaster events)
+""""""
+Nepal Multi-Source Disaster Tracker — Flask Backend
+Fetches data from three APIs concurrently:
+  A) Open-Meteo Flood API (river discharge levels)
+  B) USGS Earthquake API (recent seismic events)
+  C) NASA EONET v3 (macro disaster events)
+""""""
+Nepal Multi-Source Disaster Tracker — Flask Backend
+Fetches data from three APIs concurrently:
+  A) Open-Meteo Flood API (river discharge levels)
+  B) USGS Earthquake API (recent seismic events)
+  C) NASA EONET v3 (macro disaster events)
+""""""
+Nepal Multi-Source Disaster Tracker — Flask Backend
+Fetches data from three APIs concurrently:
+  A) Open-Meteo Flood API (river discharge levels)
+  B) USGS Earthquake API (recent seismic events)
+  C) NASA EONET v3 (macro disaster events)
+""""""
+Nepal Multi-Source Disaster Tracker — Flask Backend
+Fetches data from three APIs concurrently:
+  A) Open-Meteo Flood API (river discharge levels)
+  B) USGS Earthquake API (recent seismic events)
+  C) NASA EONET v3 (macro disaster events)
+""""""
+Nepal Multi-Source Disaster Tracker — Flask Backend
+Fetches data from three APIs concurrently:
+  A) Open-Meteo Flood API (river discharge levels)
+  B) USGS Earthquake API (recent seismic events)
+  C) NASA EONET v3 (macro disaster events)
+""""""
+Nepal Multi-Source Disaster Tracker — Flask Backend
+Fetches data from three APIs concurrently:
+  A) Open-Meteo Flood API (river discharge levels)
+  B) USGS Earthquake API (recent seismic events)
+  C) NASA EONET v3 (macro disaster events)
+""""""
+Nepal Multi-Source Disaster Tracker — Flask Backend
+Fetches data from three APIs concurrently:
+  A) Open-Meteo Flood API (river discharge levels)
+  B) USGS Earthquake API (recent seismic events)
+  C) NASA EONET v3 (macro disaster events)
+""""""
+Nepal Multi-Source Disaster Tracker — Flask Backend
+Fetches data from three APIs concurrently:
+  A) Open-Meteo Flood API (river discharge levels)
+  B) USGS Earthquake API (recent seismic events)
+  C) NASA EONET v3 (macro disaster events)
+""""""
+Nepal Multi-Source Disaster Tracker — Flask Backend
+Fetches data from three APIs concurrently:
+  A) Open-Meteo Flood API (river discharge levels)
+  B) USGS Earthquake API (recent seismic events)
+  C) NASA EONET v3 (macro disaster events)
+""""""
+Nepal Multi-Source Disaster Tracker — Flask Backend
+Fetches data from three APIs concurrently:
+  A) Open-Meteo Flood API (river discharge levels)
+  B) USGS Earthquake API (recent seismic events)
+  C) NASA EONET v3 (macro disaster events)
+""""""
+Nepal Multi-Source Disaster Tracker — Flask Backend
+Fetches data from three APIs concurrently:
+  A) Open-Meteo Flood API (river discharge levels)
+  B) USGS Earthquake API (recent seismic events)
+  C) NASA EONET v3 (macro disaster events)
+""""""
+Nepal Multi-Source Disaster Tracker — Flask Backend
+Fetches data from three APIs concurrently:
+  A) Open-Meteo Flood API (river discharge levels)
+  B) USGS Earthquake API (recent seismic events)
+  C) NASA EONET v3 (macro disaster events)
+""""""
+Nepal Multi-Source Disaster Tracker — Flask Backend
+Fetches data from three APIs concurrently:
+  A) Open-Meteo Flood API (river discharge levels)
+  B) USGS Earthquake API (recent seismic events)
+  C) NASA EONET v3 (macro disaster events)
+"""
 
 from flask import Flask, render_template, jsonify
 from concurrent.futures import ThreadPoolExecutor, as_completed
